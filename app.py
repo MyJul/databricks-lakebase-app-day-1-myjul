@@ -28,6 +28,7 @@ _w = WorkspaceClient()
 
 TABLE_NAME = os.environ.get("MASSIVE_TABLE_NAME", "massive_records")
 WATCHLIST_TABLE_NAME = os.environ.get("WATCHLIST_TABLE_NAME", "watchlist")
+NEWS_TABLE_NAME = os.environ.get("NEWS_TABLE_NAME", "stock_news")
 
 # Basic stock ticker shape check: 1-10 uppercase letters, with an optional
 # ".X" or ".XX" share-class suffix (e.g. "BRK.B"). This rejects obviously
@@ -60,6 +61,31 @@ def ensure_watchlist_table():
             PRIMARY KEY (symbol, email)
         )
         """
+    )
+
+
+def ensure_news_table():
+    """Create the stock news table in Lakebase if it doesn't exist yet."""
+    lakebase.run_write(
+        f"""
+        CREATE TABLE IF NOT EXISTS {NEWS_TABLE_NAME} (
+            id TEXT PRIMARY KEY,
+            symbol TEXT NOT NULL,
+            title TEXT,
+            author TEXT,
+            published_utc TIMESTAMPTZ,
+            article_url TEXT,
+            description TEXT,
+            publisher_name TEXT,
+            publisher_homepage_url TEXT,
+            publisher_logo_url TEXT,
+            fetched_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """
+    )
+    # Create an index on symbol for faster lookups
+    lakebase.run_write(
+        f"CREATE INDEX IF NOT EXISTS idx_{NEWS_TABLE_NAME}_symbol ON {NEWS_TABLE_NAME}(symbol)"
     )
 
 
@@ -195,6 +221,28 @@ def add_to_watchlist():
     )
 
     return jsonify({"symbol": symbol, "email": email, "latest_price": price})
+
+
+@app.route("/watchlist/<symbol>", methods=["DELETE"])
+def delete_from_watchlist(symbol):
+    """
+    Remove a stock symbol from the current user's watchlist.
+    """
+    ensure_watchlist_table()
+    
+    symbol = symbol.strip().upper() if isinstance(symbol, str) else ""
+    
+    if not symbol or not _TICKER_RE.match(symbol):
+        return jsonify({"error": f"Invalid ticker symbol: {symbol!r}"}), 400
+    
+    email = _current_user_email()
+    
+    lakebase.run_write(
+        f"DELETE FROM {WATCHLIST_TABLE_NAME} WHERE symbol = %s AND email = %s",
+        (symbol, email),
+    )
+    
+    return jsonify({"symbol": symbol, "deleted": True})
 
 
 def _extract_latest_price(data: dict) -> float | None:
