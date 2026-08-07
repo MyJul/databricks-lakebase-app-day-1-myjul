@@ -32,61 +32,65 @@ def get_tickets():
 
 
 def get_messages(ticket_id):
-    cursor = conn.cursor()
+    with get_connection() as conn:  # ✅ Add this line
+        cursor = conn.cursor()
 
-    cursor.execute("""
-        SELECT author, message_text, created_at
-        FROM ticket_messages
-        WHERE ticket_id = %s
-        ORDER BY created_at
-    """, (ticket_id,))
+        cursor.execute("""
+            SELECT author, message_text, created_at
+            FROM ticket_messages
+            WHERE ticket_id = %s
+            ORDER BY created_at
+        """, (ticket_id,))
 
-    messages = cursor.fetchall()
-    cursor.close()
+        messages = cursor.fetchall()
+        cursor.close()
 
-    return messages
+        return messages
 
 
 def create_ticket(title, status, created_by):
-    cursor = conn.cursor()
+    with get_connection() as conn:  # ✅ Add this line
+        cursor = conn.cursor()
 
-    cursor.execute("""
-        INSERT INTO tickets
-        (title, status, created_by)
-        VALUES (%s, %s, %s)
-    """,
-    (title, status, created_by))
+        cursor.execute("""
+            INSERT INTO tickets
+            (title, status, created_by)
+            VALUES (%s, %s, %s)
+        """,
+        (title, status, created_by))
 
-    conn.commit()
-    cursor.close()
+        conn.commit()
+        cursor.close()
 
 
 def add_message(ticket_id, message_text, author):
-    cursor = conn.cursor()
+    with get_connection() as conn:  # ✅ Add this line
+        cursor = conn.cursor()
 
-    cursor.execute("""
-        INSERT INTO ticket_messages
-        (ticket_id, message_text, author)
-        VALUES (%s, %s, %s)
-    """,
-    (ticket_id, message_text, author))
+        cursor.execute("""
+            INSERT INTO ticket_messages
+            (ticket_id, message_text, author)
+            VALUES (%s, %s, %s)
+        """,
+        (ticket_id, message_text, author))
 
-    conn.commit()
-    cursor.close()
+        conn.commit()
+        cursor.close()
 
 
 def update_status(ticket_id, status):
-    cursor = conn.cursor()
+    with get_connection() as conn:  # ✅ Add this line
+        cursor = conn.cursor()
 
-    cursor.execute("""
-        UPDATE tickets
-        SET status = %s
-        WHERE ticket_id = %s
-    """,
-    (status, ticket_id))
+        cursor.execute("""
+            UPDATE tickets
+            SET status = %s
+            WHERE ticket_id = %s
+        """,
+        (status, ticket_id))
 
-    conn.commit()
-    cursor.close()
+        conn.commit()
+        cursor.close()
 
 
 
