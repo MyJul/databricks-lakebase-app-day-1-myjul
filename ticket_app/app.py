@@ -13,7 +13,6 @@ from lakebase import get_connection
 
 
 # Create database connection
-conn = get_connection()
 
 
 def get_tickets():
@@ -32,7 +31,7 @@ def get_tickets():
 
 
 def get_messages(ticket_id):
-    with get_connection() as conn:  # ✅ Add this line
+    with get_connection() as conn:  
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -49,7 +48,7 @@ def get_messages(ticket_id):
 
 
 def create_ticket(title, status, created_by):
-    with get_connection() as conn:  # ✅ Add this line
+    with get_connection() as conn:  
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -64,7 +63,7 @@ def create_ticket(title, status, created_by):
 
 
 def add_message(ticket_id, message_text, author):
-    with get_connection() as conn:  # ✅ Add this line
+    with get_connection() as conn:  
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -79,7 +78,7 @@ def add_message(ticket_id, message_text, author):
 
 
 def update_status(ticket_id, status):
-    with get_connection() as conn:  # ✅ Add this line
+    with get_connection() as conn:  
         cursor = conn.cursor()
 
         cursor.execute("""
