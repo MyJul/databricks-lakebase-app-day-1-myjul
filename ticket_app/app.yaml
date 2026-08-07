@@ -1,9 +1,11 @@
 command:
-  - "python"
+  - "streamlit"
+  - "run"
   - "app.py"
 
 env:
   - name: LAKEBASE_SECRET_SCOPE
     value: "database"
+
   - name: LAKEBASE_SECRET_KEY
     value: "lakebase-url"
