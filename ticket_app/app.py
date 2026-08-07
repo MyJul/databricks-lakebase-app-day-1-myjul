@@ -17,18 +17,18 @@ conn = get_connection()
 
 
 def get_tickets():
-    cursor = conn.cursor()
+    with get_connection() as conn:  #
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT ticket_id, title, status, created_by, created_at
+            FROM tickets
+            ORDER BY ticket_id
+        """)
 
-    cursor.execute("""
-        SELECT ticket_id, title, status, created_by, created_at
-        FROM tickets
-        ORDER BY ticket_id
-    """)
+        tickets = cursor.fetchall()
+        cursor.close()
 
-    tickets = cursor.fetchall()
-    cursor.close()
-
-    return tickets
+        return tickets
 
 
 def get_messages(ticket_id):
