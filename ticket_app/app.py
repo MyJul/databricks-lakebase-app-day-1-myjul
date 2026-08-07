@@ -108,7 +108,7 @@ tickets = get_tickets()
 
 for ticket in tickets:
     st.write(
-        f"#{ticket[0]} - {ticket[1]} - {ticket[2]}"
+        f"#{ticket['ticket_id']} - {ticket['title']} - {ticket['status']}"
     )
 
 
@@ -128,7 +128,7 @@ if st.button("View Messages"):
 
     for message in messages:
         st.write(
-            f"{message[0]}: {message[1]}"
+            f"{message['author']}: {message['message_text']}"
         )
 
 
