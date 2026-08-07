@@ -97,69 +97,103 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# Database functions with priority support
-def ensure_priority_column():
-    """Add priority column if it doesn't exist"""
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-            ALTER TABLE tickets 
-            ADD COLUMN IF NOT EXISTS priority VARCHAR(20) DEFAULT 'Medium'
-        """)
-        conn.commit()
-        cursor.close()
+# Check if priority column exists
+def check_priority_column_exists():
+    """Check if priority column exists in tickets table"""
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'tickets' 
+                AND column_name = 'priority'
+            """)
+            result = cursor.fetchone()
+            cursor.close()
+            return result is not None
+    except:
+        return False
 
 
-def get_tickets(status_filter=None):
+# Database functions
+def get_tickets(status_filter=None, has_priority=True):
     with get_connection() as conn:
         cursor = conn.cursor()
         
-        if status_filter and status_filter != "All":
-            cursor.execute("""
-                SELECT ticket_id, title, status, priority, created_by, created_at
-                FROM tickets
-                WHERE status = %s
-                ORDER BY 
-                    CASE priority
-                        WHEN 'Critical' THEN 1
-                        WHEN 'High' THEN 2
-                        WHEN 'Medium' THEN 3
-                        WHEN 'Low' THEN 4
-                    END,
-                    created_at DESC
-            """, (status_filter,))
+        if has_priority:
+            if status_filter and status_filter != "All":
+                cursor.execute("""
+                    SELECT ticket_id, title, status, priority, created_by, created_at
+                    FROM tickets
+                    WHERE status = %s
+                    ORDER BY 
+                        CASE priority
+                            WHEN 'Critical' THEN 1
+                            WHEN 'High' THEN 2
+                            WHEN 'Medium' THEN 3
+                            WHEN 'Low' THEN 4
+                        END,
+                        created_at DESC
+                """, (status_filter,))
+            else:
+                cursor.execute("""
+                    SELECT ticket_id, title, status, priority, created_by, created_at
+                    FROM tickets
+                    ORDER BY 
+                        CASE priority
+                            WHEN 'Critical' THEN 1
+                            WHEN 'High' THEN 2
+                            WHEN 'Medium' THEN 3
+                            WHEN 'Low' THEN 4
+                        END,
+                        created_at DESC
+                """)
         else:
-            cursor.execute("""
-                SELECT ticket_id, title, status, priority, created_by, created_at
-                FROM tickets
-                ORDER BY 
-                    CASE priority
-                        WHEN 'Critical' THEN 1
-                        WHEN 'High' THEN 2
-                        WHEN 'Medium' THEN 3
-                        WHEN 'Low' THEN 4
-                    END,
-                    created_at DESC
-            """)
+            # Without priority column
+            if status_filter and status_filter != "All":
+                cursor.execute("""
+                    SELECT ticket_id, title, status, created_by, created_at
+                    FROM tickets
+                    WHERE status = %s
+                    ORDER BY created_at DESC
+                """, (status_filter,))
+            else:
+                cursor.execute("""
+                    SELECT ticket_id, title, status, created_by, created_at
+                    FROM tickets
+                    ORDER BY created_at DESC
+                """)
         
         tickets = cursor.fetchall()
         cursor.close()
         return tickets
 
 
-def get_ticket_stats():
+def get_ticket_stats(has_priority=True):
     with get_connection() as conn:
         cursor = conn.cursor()
         
-        cursor.execute("""
-            SELECT 
-                COUNT(*) as total,
-                COUNT(CASE WHEN status = 'Open' THEN 1 END) as open,
-                COUNT(CASE WHEN status = 'In Progress' THEN 1 END) as in_progress,
-                COUNT(CASE WHEN status = 'Resolved' THEN 1 END) as resolved,
-                COUNT(CASE WHEN priority = 'Critical' THEN 1 END) as critical
-            FROM tickets
-        """)
+        if has_priority:
+            cursor.execute("""
+                SELECT 
+                    COUNT(*) as total,
+                    COUNT(CASE WHEN status = 'Open' THEN 1 END) as open,
+                    COUNT(CASE WHEN status = 'In Progress' THEN 1 END) as in_progress,
+                    COUNT(CASE WHEN status = 'Resolved' THEN 1 END) as resolved,
+                    COUNT(CASE WHEN priority = 'Critical' THEN 1 END) as critical
+                FROM tickets
+            """)
+        else:
+            cursor.execute("""
+                SELECT 
+                    COUNT(*) as total,
+                    COUNT(CASE WHEN status = 'Open' THEN 1 END) as open,
+                    COUNT(CASE WHEN status = 'In Progress' THEN 1 END) as in_progress,
+                    COUNT(CASE WHEN status = 'Resolved' THEN 1 END) as resolved,
+                    0 as critical
+                FROM tickets
+            """)
         
         stats = cursor.fetchone()
         cursor.close()
@@ -180,15 +214,25 @@ def get_messages(ticket_id):
         return messages
 
 
-def create_ticket(title, status, priority, created_by, description=""):
+def create_ticket(title, status, priority, created_by, description="", has_priority=True):
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO tickets
-            (title, status, priority, created_by)
-            VALUES (%s, %s, %s, %s)
-            RETURNING ticket_id
-        """, (title, status, priority, created_by))
+        
+        if has_priority:
+            cursor.execute("""
+                INSERT INTO tickets
+                (title, status, priority, created_by)
+                VALUES (%s, %s, %s, %s)
+                RETURNING ticket_id
+            """, (title, status, priority, created_by))
+        else:
+            cursor.execute("""
+                INSERT INTO tickets
+                (title, status, created_by)
+                VALUES (%s, %s, %s)
+                RETURNING ticket_id
+            """, (title, status, created_by))
+        
         ticket_id = cursor.fetchone()['ticket_id']
         
         # Add initial message if description provided
@@ -216,10 +260,11 @@ def add_message(ticket_id, message_text, author):
         cursor.close()
 
 
-def update_ticket(ticket_id, status=None, priority=None):
+def update_ticket(ticket_id, status=None, priority=None, has_priority=True):
     with get_connection() as conn:
         cursor = conn.cursor()
-        if status and priority:
+        
+        if has_priority and status and priority:
             cursor.execute("""
                 UPDATE tickets
                 SET status = %s, priority = %s
@@ -231,12 +276,13 @@ def update_ticket(ticket_id, status=None, priority=None):
                 SET status = %s
                 WHERE ticket_id = %s
             """, (status, ticket_id))
-        elif priority:
+        elif has_priority and priority:
             cursor.execute("""
                 UPDATE tickets
                 SET priority = %s
                 WHERE ticket_id = %s
             """, (priority, ticket_id))
+        
         conn.commit()
         cursor.close()
 
@@ -261,8 +307,11 @@ def get_status_color(status):
     return colors.get(status, "status-open")
 
 
-# Initialize database
-ensure_priority_column()
+# Check if priority column exists
+HAS_PRIORITY = check_priority_column_exists()
+
+if not HAS_PRIORITY:
+    st.warning("⚠️ Priority feature is disabled. To enable it, run this SQL command as the database owner:\n\n`ALTER TABLE tickets ADD COLUMN priority VARCHAR(20) DEFAULT 'Medium';`")
 
 # Sidebar
 with st.sidebar:
@@ -288,7 +337,7 @@ if "📊 Dashboard" in page:
     st.title("📊 IT Support Dashboard")
     
     # Statistics
-    stats = get_ticket_stats()
+    stats = get_ticket_stats(HAS_PRIORITY)
     if stats:
         col1, col2, col3, col4, col5 = st.columns(5)
         
@@ -301,14 +350,17 @@ if "📊 Dashboard" in page:
         with col4:
             st.metric("Resolved", stats['resolved'])
         with col5:
-            st.metric("🔥 Critical", stats['critical'])
+            if HAS_PRIORITY:
+                st.metric("🔥 Critical", stats['critical'])
+            else:
+                st.metric("🔥 Critical", "N/A")
     
     st.markdown("---")
     
     # Ticket list
     st.subheader(f"Tickets {f'({status_filter})' if status_filter != 'All' else ''}")
     
-    tickets = get_tickets(status_filter)
+    tickets = get_tickets(status_filter, HAS_PRIORITY)
     
     if tickets:
         for ticket in tickets:
@@ -326,10 +378,13 @@ if "📊 Dashboard" in page:
                     )
                 
                 with col3:
-                    st.markdown(
-                        f"<span class='{get_priority_color(ticket['priority'])}'>{ticket['priority']}</span>",
-                        unsafe_allow_html=True
-                    )
+                    if HAS_PRIORITY:
+                        st.markdown(
+                            f"<span class='{get_priority_color(ticket['priority'])}'>{ticket['priority']}</span>",
+                            unsafe_allow_html=True
+                        )
+                    else:
+                        st.markdown("<span class='priority-medium'>No Priority</span>", unsafe_allow_html=True)
                 
                 st.markdown("---")
     else:
@@ -345,11 +400,15 @@ elif "➕ Create Ticket" in page:
         with col1:
             title = st.text_input("Ticket Title *", placeholder="Brief description of the issue")
             created_by = st.text_input("Your Name *", placeholder="John Doe")
-            priority = st.selectbox(
-                "Priority *",
-                ["Low", "Medium", "High", "Critical"],
-                index=1
-            )
+            if HAS_PRIORITY:
+                priority = st.selectbox(
+                    "Priority *",
+                    ["Low", "Medium", "High", "Critical"],
+                    index=1
+                )
+            else:
+                priority = "Medium"  # Default value when column doesn't exist
+                st.info("Priority selection disabled (priority column not found)")
         
         with col2:
             status = st.selectbox(
@@ -368,7 +427,7 @@ elif "➕ Create Ticket" in page:
         
         if submitted:
             if title and created_by:
-                ticket_id = create_ticket(title, status, priority, created_by, description)
+                ticket_id = create_ticket(title, status, priority, created_by, description, HAS_PRIORITY)
                 st.success(f"✅ Ticket #{ticket_id} created successfully!")
                 st.balloons()
             else:
@@ -389,7 +448,7 @@ elif "🔍 View Ticket" in page:
         )
     
     if st.button("🔍 Load Ticket", use_container_width=False):
-        tickets = get_tickets()
+        tickets = get_tickets(has_priority=HAS_PRIORITY)
         ticket = next((t for t in tickets if t['ticket_id'] == ticket_id), None)
         
         if ticket:
@@ -405,10 +464,13 @@ elif "🔍 View Ticket" in page:
                     unsafe_allow_html=True
                 )
             with col3:
-                st.markdown(
-                    f"<span class='{get_priority_color(ticket['priority'])}'>{ticket['priority']}</span>",
-                    unsafe_allow_html=True
-                )
+                if HAS_PRIORITY:
+                    st.markdown(
+                        f"<span class='{get_priority_color(ticket['priority'])}'>{ticket['priority']}</span>",
+                        unsafe_allow_html=True
+                    )
+                else:
+                    st.markdown("<span class='priority-medium'>No Priority</span>", unsafe_allow_html=True)
             
             st.caption(f"Created by {ticket['created_by']} • {ticket['created_at'].strftime('%Y-%m-%d %H:%M')}")
             
@@ -424,14 +486,18 @@ elif "🔍 View Ticket" in page:
                     index=["Open", "In Progress", "Resolved", "Closed"].index(ticket['status'])
                 )
             with col2:
-                new_priority = st.selectbox(
-                    "Update Priority",
-                    ["Low", "Medium", "High", "Critical"],
-                    index=["Low", "Medium", "High", "Critical"].index(ticket['priority'])
-                )
+                if HAS_PRIORITY:
+                    new_priority = st.selectbox(
+                        "Update Priority",
+                        ["Low", "Medium", "High", "Critical"],
+                        index=["Low", "Medium", "High", "Critical"].index(ticket['priority'])
+                    )
+                else:
+                    new_priority = None
+                    st.info("Priority updates disabled")
             
             if st.button("💾 Update Ticket"):
-                update_ticket(ticket_id, new_status, new_priority)
+                update_ticket(ticket_id, new_status, new_priority, HAS_PRIORITY)
                 st.success("Ticket updated successfully!")
                 st.rerun()
             
